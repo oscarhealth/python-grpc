@@ -25,30 +25,30 @@ class _InterceptorUnaryUnaryMultiCallable(grpc.UnaryUnaryMultiCallable):
         self._base_callable = base_callable
         self._interceptor = interceptor
 
-    def __call__(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None):
+    def __call__(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None, compression=None):
 
         def invoker(request, metadata):
-            return self._base_callable(request, timeout, metadata, credentials, wait_for_ready)
+            return self._base_callable(request, timeout, metadata, credentials, wait_for_ready, compression)
 
         client_info = _UnaryClientInfo(self._method, timeout)
         return self._interceptor.intercept_unary(request, metadata, client_info,
                                                  invoker)
 
-    def with_call(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None):
+    def with_call(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None, compression=None):
 
         def invoker(request, metadata):
             return self._base_callable.with_call(request, timeout, metadata,
-                                                 credentials, wait_for_ready)
+                                                 credentials, wait_for_ready, compression)
 
         client_info = _UnaryClientInfo(self._method, timeout)
         return self._interceptor.intercept_unary(request, metadata, client_info,
                                                  invoker)
 
-    def future(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None):
+    def future(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None, compression=None):
 
         def invoker(request, metadata):
             return self._base_callable.future(request, timeout, metadata,
-                                              credentials, wait_for_ready)
+                                              credentials, wait_for_ready, compression)
 
         client_info = _UnaryClientInfo(self._method, timeout)
         return self._interceptor.intercept_unary(request, metadata, client_info,
@@ -62,10 +62,10 @@ class _InterceptorUnaryStreamMultiCallable(grpc.UnaryStreamMultiCallable):
         self._base_callable = base_callable
         self._interceptor = interceptor
 
-    def __call__(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None):
+    def __call__(self, request, timeout=None, metadata=None, credentials=None, wait_for_ready=None, compression=None):
 
         def invoker(request, metadata):
-            return self._base_callable(request, timeout, metadata, credentials, wait_for_ready)
+            return self._base_callable(request, timeout, metadata, credentials, wait_for_ready, compression)
 
         client_info = _StreamClientInfo(self._method, False, True, timeout)
         return self._interceptor.intercept_stream(request, metadata,
@@ -84,11 +84,12 @@ class _InterceptorStreamUnaryMultiCallable(grpc.StreamUnaryMultiCallable):
                  timeout=None,
                  metadata=None,
                  credentials=None,
-                 wait_for_ready=None):
+                 wait_for_ready=None,
+                 compression=None):
 
         def invoker(request_iterator, metadata):
             return self._base_callable(request_iterator, timeout, metadata,
-                                       credentials, wait_for_ready)
+                                       credentials, wait_for_ready, compression)
 
         client_info = _StreamClientInfo(self._method, True, False, timeout)
         return self._interceptor.intercept_stream(request_iterator, metadata,
@@ -99,11 +100,12 @@ class _InterceptorStreamUnaryMultiCallable(grpc.StreamUnaryMultiCallable):
                   timeout=None,
                   metadata=None,
                   credentials=None,
-                  wait_for_ready=None):
+                  wait_for_ready=None,
+                  compression=None):
 
         def invoker(request_iterator, metadata):
             return self._base_callable.with_call(request_iterator, timeout,
-                                                 metadata, credentials, wait_for_ready)
+                                                 metadata, credentials, wait_for_ready, compression)
 
         client_info = _StreamClientInfo(self._method, True, False, timeout)
         return self._interceptor.intercept_stream(request_iterator, metadata,
@@ -114,11 +116,12 @@ class _InterceptorStreamUnaryMultiCallable(grpc.StreamUnaryMultiCallable):
                timeout=None,
                metadata=None,
                credentials=None,
-               wait_for_ready=None):
+               wait_for_ready=None,
+               compression=None):
 
         def invoker(request_iterator, metadata):
             return self._base_callable.future(request_iterator, timeout,
-                                              metadata, credentials, wait_for_ready)
+                                              metadata, credentials, wait_for_ready, compression)
 
         client_info = _StreamClientInfo(self._method, True, False, timeout)
         return self._interceptor.intercept_stream(request_iterator, metadata,
@@ -137,11 +140,12 @@ class _InterceptorStreamStreamMultiCallable(grpc.StreamStreamMultiCallable):
                  timeout=None,
                  metadata=None,
                  credentials=None,
-                 wait_for_ready=None):
+                 wait_for_ready=None,
+                 compression=None):
 
         def invoker(request_iterator, metadata):
             return self._base_callable(request_iterator, timeout, metadata,
-                                       credentials, wait_for_ready)
+                                       credentials, wait_for_ready, compression)
 
         client_info = _StreamClientInfo(self._method, True, True, timeout)
         return self._interceptor.intercept_stream(request_iterator, metadata,
