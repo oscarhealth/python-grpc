@@ -1,6 +1,3 @@
-from grpc_opentracing import scope
-
-
 class _LoggingIterator(object):
 
     def __init__(self, key, iterator, span):
@@ -38,7 +35,9 @@ def log_or_wrap_response_or_iterator(span, is_service_stream,
         return response_or_iterator
 
 
-def wrap_iter_with_end_span(response_iter):
-    for response in response_iter:
-        yield response
-    scope.end_span()
+def wrap_iter_with_end_span(response_iter, span):
+    try:
+        for response in response_iter:
+            yield response
+    finally:
+        span.finish()

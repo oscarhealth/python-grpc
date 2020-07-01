@@ -8,7 +8,6 @@ import opentracing
 import six
 from opentracing.ext import tags as ot_tags
 
-from grpc_opentracing import scope
 from grpc_opentracing.grpc_interceptor import utils as grpc_utils
 
 log = logging.getLogger(__name__)
@@ -22,14 +21,14 @@ class _ClientCallDetails(
     pass
 
 
-def _inject_span_context(tracer, span, metadata):
+def _inject_span_context(span, metadata):
     headers = {}
     try:
-        tracer.inject(span.context, opentracing.Format.HTTP_HEADERS, headers)
+        opentracing.tracer.inject(span.context, opentracing.Format.HTTP_HEADERS, headers)
     except (opentracing.UnsupportedFormatException,
             opentracing.InvalidCarrierException,
             opentracing.SpanContextCorruptedException) as e:
-        logging.exception('tracer.inject() failed')
+        logging.exception('opentracing.tracer.inject() failed')
         span.log_kv({'event': 'error', 'error.object': e})
         return metadata
     metadata = () if metadata is None else tuple(metadata)
@@ -41,21 +40,8 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
                                    grpc.StreamUnaryClientInterceptor,
                                    grpc.StreamStreamClientInterceptor):
 
-    def __init__(self, tracer, log_payloads):
-        self._tracer = tracer
+    def __init__(self, log_payloads):
         self._log_payloads = log_payloads
-
-    def _start_span(self, method):
-        active_span_context = None
-        active_span = scope.get_active_span()
-        if active_span is not None:
-            active_span_context = active_span.context
-        tags = {
-            ot_tags.COMPONENT: 'grpc',
-            ot_tags.SPAN_KIND: ot_tags.SPAN_KIND_RPC_CLIENT
-        }
-        return self._tracer.start_span(
-            operation_name=method, child_of=active_span_context, tags=tags)
 
     def _intercept_call(
             self, client_call_details, request_iterator
@@ -64,11 +50,16 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
         if client_call_details.metadata is not None:
             metadata = client_call_details.metadata
 
-        # Start a span
-        current_span = self._start_span(client_call_details.method)
+        current_span = opentracing.tracer.start_span(
+            child_of=opentracing.tracer.active_span,
+            operation_name=client_call_details.method,
+            tags={
+                ot_tags.COMPONENT: 'grpc',
+                ot_tags.SPAN_KIND: ot_tags.SPAN_KIND_RPC_CLIENT
+            },
+        )
 
-        metadata = _inject_span_context(self._tracer, current_span,
-                                        metadata)
+        metadata = _inject_span_context(current_span, metadata)
         client_call_details = _ClientCallDetails(
             client_call_details.method,
             client_call_details.timeout,
@@ -86,19 +77,18 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
 
     def _callback(self, current_span):
         def callback(future_response):
-            exception = future_response.exception()
-            if exception is not None:
-                exception = str(exception)
-                current_span.set_tag('error', True)
-                error_log = {'event': 'error', 'error.kind': exception}
-                current_span.log_kv(error_log)
-
-            if self._log_payloads:
-                response = future_response.result()
-                current_span.log_kv({'response': response})
-
-            scope.set_active_span(current_span)
-            scope.end_span()
+            try:
+                with current_span:
+                    # ``result()`` will raise a stored exception if one exists,
+                    # and the span context manager will capture it and log it
+                    # for us.
+                    response = future_response.result()
+                    if self._log_payloads:
+                        current_span.log_kv({'response': response})
+            except:
+                # Ignore the exception. Exceptions in future callbacks don't
+                # propagate anyway and this will only generate log noise.
+                pass
 
         return callback
 
@@ -133,7 +123,7 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
             response_it = grpc_utils.log_or_wrap_response_or_iterator(
                 current_span, True, response_it
             )
-        response_it = grpc_utils.wrap_iter_with_end_span(response_it)
+        response_it = grpc_utils.wrap_iter_with_end_span(response_it, current_span)
 
         return response_it
 
@@ -168,6 +158,6 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
             response_it = grpc_utils.log_or_wrap_response_or_iterator(
                 current_span, True, response_it
             )
-        response_it = grpc_utils.wrap_iter_with_end_span(response_it)
+        response_it = grpc_utils.wrap_iter_with_end_span(response_it, current_span)
 
         return response_it

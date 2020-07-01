@@ -7,7 +7,6 @@ import grpc
 import opentracing
 from opentracing.ext import tags as ot_tags
 
-from grpc_opentracing import scope
 from grpc_opentracing.grpc_interceptor import utils as grpc_utils
 
 _CANCELLED = 'cancelled'
@@ -15,8 +14,7 @@ _CANCELLED = 'cancelled'
 
 class OpenTracingServerInterceptor(grpc.ServerInterceptor):
 
-    def __init__(self, tracer, log_payloads):
-        self._tracer = tracer
+    def __init__(self, log_payloads):
         self._log_payloads = log_payloads
 
     def _start_span(self, servicer_context, method):
@@ -25,7 +23,7 @@ class OpenTracingServerInterceptor(grpc.ServerInterceptor):
         metadata = servicer_context.invocation_metadata()
         try:
             if metadata:
-                span_context = self._tracer.extract(
+                span_context = opentracing.tracer.extract(
                     opentracing.Format.HTTP_HEADERS, dict(metadata))
         except (opentracing.UnsupportedFormatException,
                 opentracing.InvalidCarrierException,
@@ -37,18 +35,20 @@ class OpenTracingServerInterceptor(grpc.ServerInterceptor):
             ot_tags.SPAN_KIND: ot_tags.SPAN_KIND_RPC_SERVER
         }
         _add_peer_tags(servicer_context.peer(), tags)
-        span = self._tracer.start_span(
+        span = opentracing.tracer.start_span(
             operation_name=method, child_of=span_context, tags=tags)
         if error is not None:
             span.log_kv({'event': 'error', 'error.object': error})
-        scope.set_active_span(span)
         return span
 
     def intercept_service(self, continuation, handler_call_details):
         def trace_wrapper(behavior, request_streaming, response_streaming):
             def new_behavior(request_or_iterator, servicer_context):
-                span = self._start_span(servicer_context, handler_call_details.method)
-                try:
+                span = self._start_span(servicer_context,
+                                        handler_call_details.method)
+                scope = opentracing.tracer.scope_manager.activate(
+                    span, finish_on_close=not response_streaming)
+                with scope:
                     if self._log_payloads:
                         request_or_iterator = grpc_utils.log_or_wrap_request_or_iterator(
                             span, request_streaming, request_or_iterator)
@@ -61,19 +61,10 @@ class OpenTracingServerInterceptor(grpc.ServerInterceptor):
                             span, response_streaming, response_or_iterator
                         )
                     if response_streaming:
-                        response_or_iterator = grpc_utils.wrap_iter_with_end_span(response_or_iterator)
+                        response_or_iterator = grpc_utils.wrap_iter_with_end_span(
+                            response_or_iterator, span)
                     _check_error_code(span, servicer_context)
-                except Exception as exc:
-                    logging.exception(exc)
-                    e = sys.exc_info()[0]
-                    span.set_tag('error', True)
-                    span.log_kv({'event': 'error', 'error.object': e})
-                    raise
-                finally:
-                    # if the response is unary, end the span here. Otherwise
-                    # it will be closed when the response iter completes
-                    if not response_streaming:
-                        scope.end_span()
+
                 return response_or_iterator
 
             return new_behavior
