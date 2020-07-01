@@ -42,15 +42,3 @@ server = grpc.server(
     interceptors=(tracer_interceptor,))
 # All future RPC activity involving `server` will be automatically traced.
 ```
-
-### Integrating with other spans.
-
-```python
-from grpc_opentracing import scope
-
-span = scope.get_active_span()
-span = tracer.start_span("do some thing", child_of=span)
-# do some thing
-span.finish()
-...
-```
