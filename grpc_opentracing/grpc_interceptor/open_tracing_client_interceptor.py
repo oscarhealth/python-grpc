@@ -21,14 +21,14 @@ class _ClientCallDetails(
     pass
 
 
-def _inject_span_context(span, metadata):
+def _inject_span_context(tracer, span, metadata):
     headers = {}
     try:
-        opentracing.tracer.inject(span.context, opentracing.Format.HTTP_HEADERS, headers)
+        tracer.inject(span.context, opentracing.Format.HTTP_HEADERS, headers)
     except (opentracing.UnsupportedFormatException,
             opentracing.InvalidCarrierException,
             opentracing.SpanContextCorruptedException) as e:
-        logging.exception('opentracing.tracer.inject() failed')
+        logging.exception('tracer.inject() failed')
         span.log_kv({'event': 'error', 'error.object': e})
         return metadata
     metadata = () if metadata is None else tuple(metadata)
@@ -40,7 +40,8 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
                                    grpc.StreamUnaryClientInterceptor,
                                    grpc.StreamStreamClientInterceptor):
 
-    def __init__(self, log_payloads):
+    def __init__(self, tracer, log_payloads):
+        self._tracer = tracer
         self._log_payloads = log_payloads
 
     def _intercept_call(
@@ -50,8 +51,8 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
         if client_call_details.metadata is not None:
             metadata = client_call_details.metadata
 
-        current_span = opentracing.tracer.start_span(
-            child_of=opentracing.tracer.active_span,
+        current_span = self._tracer.start_span(
+            child_of=self._tracer.active_span,
             operation_name=client_call_details.method,
             tags={
                 ot_tags.COMPONENT: 'grpc',
@@ -59,7 +60,7 @@ class OpenTracingClientInterceptor(grpc.UnaryUnaryClientInterceptor,
             },
         )
 
-        metadata = _inject_span_context(current_span, metadata)
+        metadata = _inject_span_context(self._tracer, current_span, metadata)
         client_call_details = _ClientCallDetails(
             client_call_details.method,
             client_call_details.timeout,
