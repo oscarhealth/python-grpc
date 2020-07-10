@@ -41,3 +41,9 @@ def wrap_iter_with_end_span(response_iter, span):
             yield response
     finally:
         span.finish()
+
+
+def wrap_iter_with_scope(response_iter, scope):
+    with scope:
+        for response in response_iter:
+            yield response

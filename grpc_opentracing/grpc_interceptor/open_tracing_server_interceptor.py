@@ -47,24 +47,37 @@ class OpenTracingServerInterceptor(grpc.ServerInterceptor):
             def new_behavior(request_or_iterator, servicer_context):
                 span = self._start_span(servicer_context,
                                         handler_call_details.method)
+
+                if self._log_payloads:
+                    request_or_iterator = grpc_utils.log_or_wrap_request_or_iterator(
+                        span, request_streaming, request_or_iterator)
+
+                # Set up a tracing scope. We don't want to finish the span on
+                # scope close if the response is streaming, because the
+                # invocation of ``behavior`` is deferred.
                 scope = self._tracer.scope_manager.activate(
                     span, finish_on_close=not response_streaming)
+
                 with scope:
-                    if self._log_payloads:
-                        request_or_iterator = grpc_utils.log_or_wrap_request_or_iterator(
-                            span, request_streaming, request_or_iterator)
                     # invoke the original rpc behavior
                     response_or_iterator = behavior(request_or_iterator,
                                                     servicer_context)
 
-                    if self._log_payloads:
-                        response_or_iterator = grpc_utils.log_or_wrap_response_or_iterator(
-                            span, response_streaming, response_or_iterator
-                        )
-                    if response_streaming:
-                        response_or_iterator = grpc_utils.wrap_iter_with_end_span(
-                            response_or_iterator, span)
-                    _check_error_code(span, servicer_context)
+                if self._log_payloads:
+                    response_or_iterator = grpc_utils.log_or_wrap_response_or_iterator(
+                        span, response_streaming, response_or_iterator
+                    )
+
+                if response_streaming:
+                    # Wrap the response iterator in a scope; this ensures that
+                    # child spans produced in the generator are properly
+                    # parented to the RPC span
+                    scope = self._tracer.scope_manager.activate(
+                        span, finish_on_close=True)
+                    response_or_iterator = grpc_utils.wrap_iter_with_scope(
+                        response_or_iterator, scope)
+
+                _check_error_code(span, servicer_context)
 
                 return response_or_iterator
 
